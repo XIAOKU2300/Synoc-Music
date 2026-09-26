@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">MeloX</string>
+    <string name="app_name">Synoc Music</string>
     <string name="tab_home">首页</string>
     <string name="tab_explore">发现</string>
     <string name="tab_library">音乐库</string>
@@ -31,5 +31,5 @@
     <string name="page_placement">页面放置</string>
     <string name="accessibility_account">账号</string>
     <string name="accessibility_now_playing">正在播放</string>
-    <string name="floating_lyrics_title">MeloX 悬浮歌词</string>
+    <string name="floating_lyrics_title">Synoc Music 悬浮歌词</string>
 </resources>

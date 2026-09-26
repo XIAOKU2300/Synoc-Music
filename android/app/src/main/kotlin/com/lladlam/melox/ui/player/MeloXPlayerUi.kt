@@ -270,15 +270,17 @@ class MeloXPlaybackUiState internal constructor(private val appContext: Context)
         durationMs = player.duration
             .takeUnless { it == C.TIME_UNSET || it < 0L }
             ?: 0L
+        // DAP remote tracks (SyncLink) are not playable here; keep them out of history and resume state.
+        val isSyncLink = item.mediaId.startsWith("synclink:")
         if (recordedMediaId != item.mediaId) {
             recordedMediaId = item.mediaId
             recordedCompletion = false
-            LocalRecommendationStore.recordPlayback(appContext, item.mediaId, title, artist)
-            if (LocalRecommendationStore.isAlgorithmEnabled(appContext) && LocalRecommendationStore.hasPersonalizationConsent(appContext)) {
+            if (!isSyncLink) LocalRecommendationStore.recordPlayback(appContext, item.mediaId, title, artist)
+            if (!isSyncLink && LocalRecommendationStore.isAlgorithmEnabled(appContext) && LocalRecommendationStore.hasPersonalizationConsent(appContext)) {
                 LocalRecommendationEngine.start(appContext)
             }
         }
-        if (MeloXSettingsPreferences.boolean(appContext, "playback_remember_last_song", true)) {
+        if (!isSyncLink && MeloXSettingsPreferences.boolean(appContext, "playback_remember_last_song", true)) {
             MeloXLastPlaybackStore.save(appContext, item, metadata, extras)
         }
         hasPrevious = player.hasPreviousMediaItem()
@@ -375,7 +377,7 @@ class MeloXPlaybackUiState internal constructor(private val appContext: Context)
             ?: 0L
         if (!recordedCompletion && durationMs > 0L && positionMs >= (durationMs * .85f).toLong()) {
             recordedCompletion = true
-            mediaId?.let { key ->
+            mediaId?.takeUnless { it.startsWith("synclink:") }?.let { key ->
                 LocalRecommendationStore.recordPlayback(appContext, key, title, artist, completed = true)
                 if (LocalRecommendationStore.isAlgorithmEnabled(appContext) && LocalRecommendationStore.hasPersonalizationConsent(appContext)) {
                     LocalRecommendationEngine.start(appContext)
@@ -457,7 +459,10 @@ class MeloXPlaybackUiState internal constructor(private val appContext: Context)
 
     fun togglePlayPause() {
         controller?.let { player ->
-            if (player.isPlaying) player.pause() else player.play()
+            if (player.isPlaying) player.pause() else {
+                if (player.playbackState == Player.STATE_IDLE) player.prepare()
+                player.play()
+            }
         }
     }
 
@@ -465,6 +470,8 @@ class MeloXPlaybackUiState internal constructor(private val appContext: Context)
         val player = controller ?: return
         if (player.currentMediaItem != null || !MeloXSettingsPreferences.boolean(appContext, "playback_remember_last_song", true)) return
         val saved = MeloXLastPlaybackStore.read(appContext) ?: return
+        // Older builds could persist a SyncLink remote item; it has no local URI and can't be resumed.
+        if (saved.mediaId.startsWith("synclink:")) return
         val builder = MediaItem.Builder()
             .setMediaId(saved.mediaId)
             .setMediaMetadata(
@@ -508,7 +515,7 @@ class MeloXPlaybackUiState internal constructor(private val appContext: Context)
     fun next() {
         controller?.let { player ->
             if (!recordedCompletion && player.currentPosition < 30_000L) {
-                mediaId?.let { LocalRecommendationStore.recordPlayback(appContext, it, title, artist, skipped = true) }
+                mediaId?.takeUnless { it.startsWith("synclink:") }?.let { LocalRecommendationStore.recordPlayback(appContext, it, title, artist, skipped = true) }
             }
             PlaybackCommands.prioritizeManualQueue(player)
             player.seekToNextMediaItem()

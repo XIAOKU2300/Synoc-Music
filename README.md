@@ -1,34 +1,48 @@
-# MeloX Android
+# Synoc Music
 
-[![Downloads](https://img.shields.io/github/downloads/lladlam/MeloX-Android/total?label=downloads&color=2ea44f)](https://github.com/lladlam/MeloX-Android/releases)
-[![Release](https://img.shields.io/github/v/release/lladlam/MeloX-Android?display_name=release&label=release&color=ff2d55)](https://github.com/lladlam/MeloX-Android/releases/latest)
-[![Last Commit](https://img.shields.io/github/last-commit/lladlam/MeloX-Android/main?label=last%20commit&color=007aff)](https://github.com/lladlam/MeloX-Android/commits/main)
-[![QQ群](https://img.shields.io/badge/QQ%E7%BE%A4-MeloX--Android-12B7F5?logo=tencentqq&logoColor=white)](https://qm.qq.com/q/wbhFQxj7mo)
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+[![GitHub](https://img.shields.io/badge/GitHub-XIAOKU2300-181717?logo=github)](https://github.com/XIAOKU2300)
+[![QQ群](https://img.shields.io/badge/QQ%E7%BE%A4-1124680973-12B7F5?logo=tencentqq&logoColor=white)](http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=9PFsj_0lDY35JcGVKDF-Znb9o7asAEfy&authKey=bqRpzOa1%2F%2Ba6RU%2FnMGWV1LcBFzEYglGtreTuj4SfUF257lneWWeaDUrPocrAQirE&noverify=0&group_code=1124680973)
+[![Upstream](https://img.shields.io/badge/fork%20of-MeloX--Android-ff2d55)](https://github.com/lladlam/MeloX-Android)
 
 <p align="center">
-  <img src="android/app/src/main/res/drawable-nodpi/ic_launcher_foreground.png" width="128" alt="MeloX Android icon" />
+  <img src="android/app/src/main/res/drawable-nodpi/ic_launcher_foreground.png" width="128" alt="Synoc Music icon" />
 </p>
 
 <p align="center">
-  使用 Kotlin + Jetpack Compose 构建的 MeloX 原生 Android 迁移版
+  基于 MeloX Android 的非官方社区分支 —— 用手机控制你的山灵（Shanling）播放器
 </p>
 
 > [!IMPORTANT]
-> **MeloX Android 仍处于开发阶段。** 已完成当前 Android 平台范围内的核心功能迁移，并持续以 MeloX 主线作为行为基准；第三方接口、OEM 协议和不同系统版本仍可能带来兼容性变化。
+> **Synoc Music 是非官方开源项目**，与山灵（Shanling）、网易云音乐、QQ 音乐、小米、Apple 等公司及其关联方均不存在隶属、合作或授权关系。SyncLink 相关功能**仅供控制你本人拥有的设备**。
 
-> MeloX Android 是非官方开源项目，与网易云音乐、小米、Apple 及其关联公司不存在隶属、合作或授权关系。
+## 当前版本：0.7.0
 
-## 当前版本：0.6.0
+`0.7.0` 是 Synoc Music 的首个版本：在 MeloX Android 0.6.0 基础上完整接入山灵 SyncLink（Wi-Fi / 蓝牙），并修复后台灵动岛不切歌、文件夹无法显示存储等问题。详见 [CHANGELOG.md](CHANGELOG.md)。
 
-`0.6.0` 接入 Spotify 与 YouTube Music 两个新音乐源，新增 provider-neutral 下载与离线播放、vivo OriginOS 原子岛适配、基于提交的开发版更新检查；同时集中修复社区反馈的问题（酷狗音源、搜索返回、队列持久化、歌单界面、日推、横屏布局、歌词显示等），并加固账号会话存储与网络安全。
+- 维护者：GitHub [XIAOKU2300](https://github.com/XIAOKU2300)
+- 交流与反馈：QQ 群「山灵音乐逆向反馈群」**1124680973**（[点击链接加入群聊](http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=9PFsj_0lDY35JcGVKDF-Znb9o7asAEfy&authKey=bqRpzOa1%2F%2Ba6RU%2FnMGWV1LcBFzEYglGtreTuj4SfUF257lneWWeaDUrPocrAQirE&noverify=0&group_code=1124680973)）
+- 上游项目：[lladlam/MeloX-Android](https://github.com/lladlam/MeloX-Android)（GPLv3）。**MeloX 本体的问题请优先反馈到上游**；SyncLink 相关问题请在本项目或 QQ 群反馈，不要打扰上游作者。
 
-- 下载与完整更新日志：[GitHub Releases](https://github.com/lladlam/MeloX-Android/releases/tag/0.6.0)
-- 详细版本记录：[CHANGELOG.md](CHANGELOG.md)
-- 本次版本说明：[CHANGELOG.md](CHANGELOG.md)
+## 山灵 SyncLink 功能
 
-> [!WARNING]
-> 第三方音乐源由用户自行导入并依赖外部服务。发布前用于测试的第三方音源均出现接口失效、限流、DNS/证书错误或返回地址不可播放等情况，因此 MeloX 无法保证任意第三方源可用。若遇到问题，请前往“设置 → 关于”，拉到页面底部导出 MeloX 全部日志，并发送至 `lladlam114@gmail.com`。日志可能包含账号状态、歌曲信息、请求地址或其他隐私数据，请在发送前自行检查。
+入口：设置 → 账号卡片下方「山灵 SyncLink」。连接成功后，App 首页会切换为**设备首页**，显示设备里的歌单和随机歌曲。
+
+| 功能 | 说明 |
+| --- | --- |
+| 连接 | 局域网（Wi-Fi）自动发现 / 手动 IP；经典蓝牙 RFCOMM（M0 等 Linux 机型），未配对设备点击即配对 |
+| 控制 | 播放 / 暂停、上一首 / 下一首、进度拖动、播放模式、音量（LO 输出时自动禁用）、收藏 |
+| 曲库 | 全部歌曲、Hi-Res、收藏、最近播放、专辑、艺术家、流派、歌单、文件夹（显示存储已用 / 剩余空间）、搜索、播放队列 |
+| 系统集成 | 通知栏 / 锁屏 / 耳机按键 / 蓝牙车机直接控制播放器；HyperOS 超级岛、vivo 原子岛与歌词通知同步显示设备正在播放的歌曲和歌词 |
+| 歌词与封面 | 按标题 / 艺术家 / 专辑 / 时长在线严格匹配，支持逐字歌词与翻译；本地缓存与批量预下载 |
+| 音质显示 | `FLAC 24/96`、`DSD128`、`MP3 320k` 等 |
+| 稳定性 | 后台保活、断线自动退避重连，重连期间保持媒体通知不丢失；被其他手机抢占时不互踢 |
+
+为安全起见，**以下高风险指令在代码中完全没有实现**：关机、恢复出厂、固件升级（OTA）、删除配对、设置 / 读取设备 Wi-Fi。
+
+## 以下为上游 MeloX Android 说明
+
+> 以下内容保留自上游 README，描述的是 Synoc Music 所继承的 MeloX 本体功能。
 
 ## 项目说明
 
@@ -289,16 +303,21 @@ Android 版直接依赖 [Kyant0/AndroidLiquidGlass](https://github.com/Kyant0/An
 
 ## 免责声明
 
-本项目出于学习、研究与开源交流目的开发。
+本项目出于学习、研究与开源交流目的开发，免费提供，不接受任何形式的售卖。
 
-- MeloX Android 不以绕过付费、版权、地区限制或网易云音乐服务限制为目标；
-- 使用者应自行遵守所在地法律法规、网易云音乐服务条款以及音乐内容的版权要求；
-- 项目调用的第三方服务接口可能发生变化，开发者不保证持续可用；
-- 本项目按许可证所述不提供任何担保，使用本项目产生的风险由使用者自行承担。
+- Synoc Music / MeloX Android 不以绕过付费、版权、地区限制或任何音乐平台服务限制为目标；
+- **山灵 SyncLink 兼容功能**基于对通信协议的自行分析，仅以实现互操作为目的，不包含、不分发山灵的任何代码、固件或素材，也不修改设备固件；请仅用于控制你本人合法拥有的播放器。“山灵”“Shanling”“SyncLink”为其权利人的商标，仅用于说明兼容对象；
+- 在线匹配得到的歌词、封面版权归原作者与权利人所有，仅供个人欣赏，匹配结果可能不准确；
+- 使用者应自行遵守所在地法律法规、各平台服务条款以及音乐内容的版权要求；
+- 项目调用的第三方服务接口与设备协议可能发生变化，开发者不保证持续可用；
+- 本项目按许可证所述不提供任何担保，使用本项目（包括因控制设备导致的异常、数据丢失或保修争议）产生的风险由使用者自行承担；
+- 权利人如认为本项目侵犯其合法权益，请通过 GitHub 或上述 QQ 群联系，核实后会及时处理。
+
+应用内完整条款见 `android/app/src/main/assets/legal/disclaimer-zh-CN.md`，首次启动时会弹窗确认。
 
 ## 许可证
 
-MeloX Android 主体代码按照与上游 MeloX 相同的 **GNU General Public License version 3（GPLv3）** 发布，完整条款见 [LICENSE](LICENSE)。
+Synoc Music 是 MeloX Android 的衍生作品，主体代码按照与上游相同的 **GNU General Public License version 3（GPLv3）** 发布，完整条款见 [LICENSE](LICENSE)。MeloX 原有代码版权归其原作者所有；SyncLink 相关新增代码（`core/synclink/`、`ui/synclink/`、`playback/SyncLinkPlayer.kt` 等）版权归 Synoc Music 贡献者所有，同样以 GPLv3 发布。
 
 复制、修改或分发本项目时，请遵守 GPLv3 关于源代码提供、版权声明、修改说明以及同许可证分发等要求。
 

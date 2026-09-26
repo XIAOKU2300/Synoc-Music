@@ -193,7 +193,7 @@ private enum class SettingsRoute(val title: String) {
     TabLayout("页面与标签栏"),
     General("通用"),
     RemoteConfig("远程兼容性配置"),
-    About("关于 MeloX"),
+    About("关于 Synoc Music"),
     Legal("隐私政策与免责声明"),
     Privacy("隐私与本地算法"),
     Developer("开发者选项"),
@@ -462,6 +462,15 @@ private fun SettingsAccountCard(
                 showTopSeparator = true,
             )
         }
+        val syncLinkContext = androidx.compose.ui.platform.LocalContext.current
+        MeloXIosListRow(
+            title = "山灵 SyncLink",
+            subtitle = "遥控山灵播放器，浏览设备曲库、歌词与设置",
+            leading = { MeloXSymbolIcon(MeloXSymbol.Devices, Modifier.size(30.dp), accent) },
+            chevronTint = accent,
+            onClick = { com.lladlam.melox.ui.synclink.SyncLinkActivity.launch(syncLinkContext) },
+            showTopSeparator = true,
+        )
     }
 }
 
@@ -788,6 +797,16 @@ private fun SystemPlaybackSettings(context: android.content.Context) {
                 notifications = enabled
                 MeloXSettingsPreferences.setBoolean(context, "lyrics_notifications_enabled", enabled)
             }
+        }
+        val hyperIsland = remember { mutableStateOf(MeloXSettingsPreferences.boolean(context, "hyperos_super_island_enabled", false)) }
+        SettingsExternalToggleRow(
+            title = "HyperOS 超级岛歌词",
+            value = hyperIsland.value,
+            note = "将歌词同步到 HyperOS Focus / Super Island 卡片；即使关闭独立歌词通知也会发送 Focus 卡片。",
+            grouped = true,
+        ) { enabled ->
+            hyperIsland.value = enabled
+            MeloXSettingsPreferences.setBoolean(context, "hyperos_super_island_enabled", enabled)
         }
     }
     Spacer(Modifier.height(10.dp))
@@ -3012,9 +3031,33 @@ private fun AboutSettings(context: android.content.Context) {
     Spacer(Modifier.height(14.dp))
     SettingsGlassGroup {
         Column(Modifier.padding(16.dp)) {
+            Text(com.lladlam.melox.ui.legal.SynocProject.NAME, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                "基于 MeloX 的非官方社区分支，加入山灵 SyncLink（Wi-Fi / 蓝牙）远程控制。\n" +
+                    "维护者：GitHub ${com.lladlam.melox.ui.legal.SynocProject.GITHUB_USER}\n" +
+                    "交流反馈：QQ 群「${com.lladlam.melox.ui.legal.SynocProject.QQ_GROUP_NAME}」${com.lladlam.melox.ui.legal.SynocProject.QQ_GROUP_NUMBER}\n" +
+                    "与山灵官方无关，仅用于控制本人拥有的设备。",
+                modifier = Modifier.padding(top = 10.dp),
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = .62f),
+                fontSize = 13.sp,
+                lineHeight = 20.sp,
+            )
+        }
+    }
+    Spacer(Modifier.height(10.dp))
+    SettingsActionButton("打开 Synoc Music GitHub") {
+        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(com.lladlam.melox.ui.legal.SynocProject.GITHUB_URL))) }
+    }
+    Spacer(Modifier.height(10.dp))
+    SettingsActionButton("加入山灵音乐逆向反馈群（${com.lladlam.melox.ui.legal.SynocProject.QQ_GROUP_NUMBER}）") {
+        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(com.lladlam.melox.ui.legal.SynocProject.QQ_GROUP_URL))) }
+    }
+    Spacer(Modifier.height(14.dp))
+    SettingsGlassGroup {
+        Column(Modifier.padding(16.dp)) {
             Text("项目与许可", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
             Text(
-                "MeloX 主体：GNU GPLv3\n" +
+                "Synoc Music / MeloX 主体：GNU GPLv3\n" +
                     "qier222/YesPlayMusic：网易云接口与播放器实现参考（MIT）\n" +
                     "jayfunc/BetterLyrics：逐字歌词渲染、光效与动效参考\n" +
                     "WXRIW/Lyricify-Lyrics-Helper：网易云 YRC 解析参考\n" +
@@ -3037,7 +3080,7 @@ private fun AboutSettings(context: android.content.Context) {
         }
     }
     Spacer(Modifier.height(14.dp))
-    SettingsActionButton("打开 MeloX Android GitHub") {
+    SettingsActionButton("打开上游 MeloX Android GitHub") {
         runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/lladlam/MeloX-Android"))) }
     }
     Spacer(Modifier.height(10.dp))
@@ -3049,7 +3092,7 @@ private fun AboutSettings(context: android.content.Context) {
         runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/youshen2/MeloX/blob/main/MeloX/Features/Legal/ProjectLicensesView.swift"))) }
     }
     Spacer(Modifier.height(10.dp))
-    SettingsActionButton("加入QQ群") {
+    SettingsActionButton("加入 MeloX 上游 QQ 群") {
         runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://qm.qq.com/q/wbhFQxj7mo"))) }
     }
     Spacer(Modifier.height(10.dp))

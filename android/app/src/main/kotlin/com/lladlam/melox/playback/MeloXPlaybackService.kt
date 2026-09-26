@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Bundle
 import android.os.Build
@@ -50,6 +51,10 @@ import com.lladlam.melox.core.music.model.MusicPlaylistSummary
 import com.lladlam.melox.core.music.model.MusicResourceId
 import com.lladlam.melox.core.music.model.MusicSource
 import com.lladlam.melox.core.remoteconfig.MeloXRemoteConfigPolicy
+import com.lladlam.melox.core.synclink.SyncLinkManager
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import com.lladlam.melox.core.music.provider.MeloXMusicProviders
 import com.lladlam.melox.core.music.provider.PlaylistCapability
 import com.lladlam.melox.core.music.provider.UserLibraryCapability
@@ -68,6 +73,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -79,6 +85,9 @@ class MeloXPlaybackService : MediaSessionService() {
     private var player: ExoPlayer? = null
     private var incomingPlayer: ExoPlayer? = null
     private var mediaSession: MediaSession? = null
+    private var syncLinkPlayer: SyncLinkPlayer? = null
+    private val syncLinkRouted: Boolean
+        get() = syncLinkPlayer != null && mediaSession?.player === syncLinkPlayer
     private lateinit var mediaSourceFactory: DefaultMediaSourceFactory
     private lateinit var mediaPrefetcher: MeloXMediaPrefetcher
     private lateinit var downloadStore: MeloXDownloadStore
@@ -122,6 +131,7 @@ class MeloXPlaybackService : MediaSessionService() {
     private var analysisForegroundStarted = false
     private var backgroundAnalysisJob: Job? = null
     private var backgroundAnalysisScheduledId: String? = null
+    private var prefetchJob: Job? = null
     private var smartQueueJob: Job? = null
     private var smartQueueSourceId: String? = null
     private var smartQueueGeneration = -1L
@@ -141,13 +151,19 @@ class MeloXPlaybackService : MediaSessionService() {
     private val playerListener = object : Player.Listener {
         override fun onPlayerError(error: PlaybackException) {
             val active = player
-            if (active != null && !MeloXNetworkAvailability.isOnline(this@MeloXPlaybackService)) {
-                if (skipToNextDownloaded(active)) {
-                    Log.i(TAG, "Offline playback skipped unavailable item after player error")
-                    return
-                }
-            }
             Log.e(TAG, "Playback failed: code=${error.errorCodeName}, message=${error.message}", error)
+            if (active == null) return
+            if (!MeloXNetworkAvailability.isOnline(this@MeloXPlaybackService) && skipToNextDownloaded(active)) {
+                Log.i(TAG, "Offline playback skipped unavailable item after player error")
+                return
+            }
+            if (active.hasNextMediaItem()) {
+                active.seekToNextMediaItem()
+                active.prepare()
+                active.play()
+                return
+            }
+            active.prepare()
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -262,6 +278,8 @@ class MeloXPlaybackService : MediaSessionService() {
             controller: MediaSession.ControllerInfo,
             playerCommand: Int,
         ): Int {
+            // The SyncLink facade owns its own transport; AutoMix policies only apply to local decks.
+            if (syncLinkRouted) return SessionResult.RESULT_SUCCESS
             return when (MeloXAutoMixTransportPolicy.action(
                 command = playerCommand,
                 hasPreparedMix = hasPreparedMix(),
@@ -294,8 +312,10 @@ class MeloXPlaybackService : MediaSessionService() {
         // needed by Smart analysis when it examines the outgoing tail later.
         val following = (current until minOf(current + PREFETCH_TRACK_COUNT + 1, active.mediaItemCount))
             .map(active::getMediaItemAt)
-        serviceScope.launch(Dispatchers.IO) {
+        prefetchJob?.cancel()
+        prefetchJob = serviceScope.launch(Dispatchers.IO) {
             following.forEach { item ->
+                if (!isActive) return@launch
                 runCatching { mediaPrefetcher.cache(item) }
                     .onSuccess { Log.i(TAG, "Playback cache ready: ${item.mediaId}") }
                     .onFailure { Log.d(TAG, "Playback cache skipped for ${item.mediaId}: ${it.message}") }
@@ -305,7 +325,7 @@ class MeloXPlaybackService : MediaSessionService() {
 
     private val modeMonitor = object : Runnable {
         override fun run() {
-            val active = player
+            val active = player?.takeUnless { syncLinkRouted }
             if (active != null) {
                 applyAudioFocusPolicy(active)
                 val uiTransitionActive = MeloXPlayerTransitionState.isActive
@@ -333,9 +353,16 @@ class MeloXPlaybackService : MediaSessionService() {
                     recoverAutoMixFailure()
                 }
             }
+            val remote = syncLinkRouted
+            if (remote) {
+                runCatching { maybeUpdateSyncLinkLyrics() }
+                    .onFailure { Log.e(TAG, "SyncLink lyrics surface update failed", it) }
+            }
             val nextTickMs = when {
                 mixStartedAt > 0L -> ACTIVE_MONITOR_INTERVAL_MS
                 active?.isPlaying == true -> ACTIVE_MONITOR_INTERVAL_MS
+                remote && SyncLinkManager.state.value.isPlaying -> ACTIVE_MONITOR_INTERVAL_MS
+                remote -> PAUSED_MONITOR_INTERVAL_MS
                 active?.currentMediaItem != null -> PAUSED_MONITOR_INTERVAL_MS
                 else -> IDLE_MONITOR_INTERVAL_MS
             }
@@ -476,6 +503,53 @@ class MeloXPlaybackService : MediaSessionService() {
         handler.postDelayed({
             player?.currentMediaItem?.let(::ensureBackgroundAnalysisScheduled)
         }, 1_000L)
+        SyncLinkManager.init(this)
+        serviceScope.launch {
+            // Stay on the DAP through background reconnects: swapping to the idle local player drops
+            // the media notification, and Android won't let us re-promote it from the background.
+            combine(SyncLinkManager.state.map { it.holdsSession }, SyncLinkManager.remoteRoute) { connected, route ->
+                connected && route
+            }.distinctUntilChanged().collect(::routeSyncLink)
+        }
+    }
+
+    /** Swaps the MediaSession between MeloX's local ExoPlayer and the SyncLink remote facade. */
+    private fun routeSyncLink(remote: Boolean) {
+        val session = mediaSession ?: return
+        if (remote) {
+            if (syncLinkRouted) return
+            pauseAllAndCancelMix()
+            resetLyricsSurfaces()
+            val remotePlayer = syncLinkPlayer ?: SyncLinkPlayer(::onLocalPlaybackRequested).also { syncLinkPlayer = it }
+            runCatching { session.setPlayer(remotePlayer) }
+                .onFailure { Log.e(TAG, "Unable to route session to SyncLink", it) }
+            Log.i(TAG, "MediaSession routed to SyncLink device")
+        } else {
+            val local = player ?: return
+            val remotePlayer = syncLinkPlayer ?: return
+            if (session.player === remotePlayer) {
+                runCatching { session.setPlayer(local) }
+                    .onFailure { Log.e(TAG, "Unable to restore local session player", it) }
+            }
+            syncLinkPlayer = null
+            runCatching { remotePlayer.release() }
+            resetLyricsSurfaces()
+            Log.i(TAG, "MediaSession routed back to local playback")
+        }
+    }
+
+    /** A MeloX screen started local playback while the DAP owned the session: hand it back. */
+    private fun onLocalPlaybackRequested(items: List<MediaItem>, startIndex: Int, startPositionMs: Long, append: Boolean) {
+        val local = player ?: return
+        SyncLinkManager.releaseRoute()
+        routeSyncLink(false)
+        if (append) {
+            local.addMediaItems(startIndex.coerceIn(0, local.mediaItemCount), items)
+        } else if (startIndex == C.INDEX_UNSET) {
+            local.setMediaItems(items)
+        } else {
+            local.setMediaItems(items, startIndex.coerceIn(0, items.lastIndex), startPositionMs)
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -1123,6 +1197,8 @@ class MeloXPlaybackService : MediaSessionService() {
         val currentItem = active.currentMediaItem ?: return
         val metadataEnabled = MeloXSettingsRuntime.systemLyricsEnabled
         val notificationEnabled = MeloXSettingsRuntime.lyricNotificationsEnabled
+        val hyperIslandEnabled = MeloXSettingsPreferences.boolean(this, "hyperos_super_island_enabled", false)
+        val effectiveNotification = notificationEnabled || hyperIslandEnabled
         val songId = currentItem.mediaId.toLongOrNull()?.takeIf { it > 0L }
         if (shouldClearLegacySystemLyrics(currentItem.mediaId)) {
             restoreSystemLyricsMetadata(active)
@@ -1131,7 +1207,7 @@ class MeloXPlaybackService : MediaSessionService() {
             return
         }
         songId ?: return
-        if (!metadataEnabled && !notificationEnabled && !VivoAtomicIslandBridge.isSupported()) {
+        if (!metadataEnabled && !effectiveNotification && !VivoAtomicIslandBridge.isSupported()) {
             restoreSystemLyricsMetadata(active)
             (getSystemService(NotificationManager::class.java)).cancel(LYRICS_NOTIFICATION_ID)
             return
@@ -1187,7 +1263,7 @@ class MeloXPlaybackService : MediaSessionService() {
         val notificationAllowedByScene =
             (!MeloXSettingsRuntime.lyricNotificationBackgroundOnly || !MeloXAppVisibility.isForeground) &&
                 (!MeloXSettingsRuntime.lyricNotificationDismissWhenPaused || active.isPlaying)
-        if (notificationEnabled && notificationAllowedByScene) postLyricsNotification(line, nextLine, original) else {
+        if (effectiveNotification && notificationAllowedByScene) postLyricsNotification(line, nextLine, original) else {
             getSystemService(NotificationManager::class.java).cancel(LYRICS_NOTIFICATION_ID)
         }
     }
@@ -1264,7 +1340,107 @@ class MeloXPlaybackService : MediaSessionService() {
         )
     }
 
-    private fun postLyricsNotification(line: String, nextLine: String, metadata: MediaMetadata) {
+    /**
+     * Lyrics notification / super island / atomic island for the SyncLink route. The local path
+     * ([maybeUpdateSystemLyrics]) reads ExoPlayer, which sits idle while the DAP owns the session, so
+     * without this the island kept showing whatever was last played locally and never followed the DAP.
+     */
+    private fun maybeUpdateSyncLinkLyrics() {
+        val manager = getSystemService(NotificationManager::class.java)
+        val effectiveNotification = MeloXSettingsRuntime.lyricNotificationsEnabled ||
+            MeloXSettingsPreferences.boolean(this, "hyperos_super_island_enabled", false)
+        val s = SyncLinkManager.state.value
+        if (!effectiveNotification || s.info.isEmpty) {
+            if (syncLinkLyricsKey.isNotEmpty()) {
+                syncLinkLyricsKey = ""
+                VivoAtomicIslandBridge.clear(this)
+                manager.cancel(LYRICS_NOTIFICATION_ID)
+            }
+            return
+        }
+        val key = SyncLinkManager.trackKey(s.info)
+        val trackChanged = key != syncLinkLyricsKey
+        val document = SyncLinkManager.currentLyrics(s)
+        val position = s.positionMs()
+        val index = document?.highlightedIndex(position + MeloXSettingsRuntime.lyricAdvanceMs.toLong()) ?: -1
+        val now = SystemClock.elapsedRealtime()
+        val lineChanged = index != systemLyricsLastIndex || document !== syncLinkLyricsDocument
+        val playbackChanged = s.isPlaying != systemLyricsLastPlaying
+        val periodicRefresh = now - systemLyricsLastDispatchRealtimeMs >= 1_000L
+        if (!trackChanged && !lineChanged && !playbackChanged && !periodicRefresh) return
+        syncLinkLyricsKey = key
+        syncLinkLyricsDocument = document
+        systemLyricsLastIndex = index
+        systemLyricsLastPlaying = s.isPlaying
+        systemLyricsLastDispatchRealtimeMs = now
+        val info = s.info
+        val metadata = MediaMetadata.Builder()
+            .setTitle(info.displayTitle)
+            .setArtist(info.artist.ifBlank { null })
+            .setAlbumTitle(info.album.ifBlank { null })
+            .build()
+        var line = document?.lines?.getOrNull(index)?.text?.trim().orEmpty()
+        val nextLine = document?.lines?.getOrNull(index + 1)?.text?.trim().orEmpty()
+        if (line.isBlank()) {
+            line = renderNotificationTemplate(MeloXSettingsRuntime.lyricNotificationFallback, "", metadata)
+                .ifBlank { info.displayTitle }
+        }
+        if (line.isBlank()) return
+        val allowedByScene =
+            (!MeloXSettingsRuntime.lyricNotificationBackgroundOnly || !MeloXAppVisibility.isForeground) &&
+                (!MeloXSettingsRuntime.lyricNotificationDismissWhenPaused || s.isPlaying)
+        if (allowedByScene) {
+            postLyricsNotification(
+                line = line,
+                nextLine = nextLine,
+                metadata = metadata,
+                positionMs = position,
+                durationMs = s.durationMs,
+                isPlaying = s.isPlaying,
+                artwork = syncLinkArtwork(s.coverPath),
+            )
+        } else {
+            manager.cancel(LYRICS_NOTIFICATION_ID)
+        }
+    }
+
+    private var syncLinkLyricsKey = ""
+    private var syncLinkLyricsDocument: LyricsDocument? = null
+    private var syncLinkArtworkPath: String? = null
+    private var syncLinkArtworkBitmap: Bitmap? = null
+
+    private fun syncLinkArtwork(path: String?): Bitmap? {
+        if (!MeloXSettingsRuntime.lyricNotificationShowArtwork || path == null) return null
+        if (path != syncLinkArtworkPath) {
+            syncLinkArtworkPath = path
+            syncLinkArtworkBitmap = runCatching {
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeFile(path, bounds)
+                var sample = 1
+                while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= 256) sample *= 2
+                BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sample })
+            }.getOrNull()
+        }
+        return syncLinkArtworkBitmap
+    }
+
+    /** Drops whatever the lyrics notification/island showed for the previous route. */
+    private fun resetLyricsSurfaces() {
+        resetSystemLyrics(null)
+        syncLinkLyricsKey = ""
+        syncLinkLyricsDocument = null
+        getSystemService(NotificationManager::class.java).cancel(LYRICS_NOTIFICATION_ID)
+    }
+
+    private fun postLyricsNotification(
+        line: String,
+        nextLine: String,
+        metadata: MediaMetadata,
+        positionMs: Long = player?.currentPosition ?: 0L,
+        durationMs: Long = player?.duration?.takeIf { it != C.TIME_UNSET && it > 0L } ?: 0L,
+        isPlaying: Boolean = player?.isPlaying == true,
+        artwork: Bitmap? = null,
+    ) {
         val intent = Intent(this, MainActivity::class.java).apply {
             action = MainActivity.ACTION_OPEN_NOW_PLAYING
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -1289,16 +1465,19 @@ class MeloXPlaybackService : MediaSessionService() {
             .setContentIntent(pendingIntent)
             .setSilent(true)
             .setOnlyAlertOnce(true)
-            .setOngoing(player?.isPlaying == true)
+            .setOngoing(isPlaying)
             .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
         if (MeloXSettingsRuntime.lyricNotificationShowArtwork) {
-            metadata.artworkData?.let { bytes ->
-                runCatching { BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }.getOrNull()?.let(builder::setLargeIcon)
+            if (artwork != null) {
+                builder.setLargeIcon(artwork)
+            } else {
+                metadata.artworkData?.let { bytes ->
+                    runCatching { BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }.getOrNull()?.let(builder::setLargeIcon)
+                }
             }
         }
-        if (MeloXSettingsRuntime.lyricNotificationShowProgress) {
-            val duration = player?.duration?.takeIf { it != C.TIME_UNSET && it > 0L } ?: 0L
-            if (duration > 0L) builder.setProgress(1_000, ((player?.currentPosition ?: 0L) * 1_000L / duration).toInt().coerceIn(0, 1_000), false)
+        if (MeloXSettingsRuntime.lyricNotificationShowProgress && durationMs > 0L) {
+            builder.setProgress(1_000, (positionMs * 1_000L / durationMs).toInt().coerceIn(0, 1_000), false)
         }
         val notification = builder.build()
         VivoAtomicIslandBridge.publish(
@@ -1306,9 +1485,9 @@ class MeloXPlaybackService : MediaSessionService() {
             line = line,
             songTitle = metadata.title?.toString().orEmpty(),
             artist = metadata.artist?.toString().orEmpty(),
-            positionMs = player?.currentPosition ?: 0L,
-            durationMs = player?.duration?.takeIf { it != C.TIME_UNSET } ?: 0L,
-            isPlaying = player?.isPlaying == true,
+            positionMs = positionMs,
+            durationMs = durationMs,
+            isPlaying = isPlaying,
             clickIntent = pendingIntent,
         )
         HyperOsFocusBridge.playbackPayload(
@@ -1316,9 +1495,9 @@ class MeloXPlaybackService : MediaSessionService() {
             lyric = line,
             songTitle = metadata.title?.toString().orEmpty(),
             artist = metadata.artist?.toString().orEmpty(),
-            positionMs = player?.currentPosition ?: 0L,
-            durationMs = player?.duration?.takeIf { it != C.TIME_UNSET } ?: 0L,
-            isPlaying = player?.isPlaying == true,
+            positionMs = positionMs,
+            durationMs = durationMs,
+            isPlaying = isPlaying,
         )?.let { HyperOsFocusBridge.attachFocusParams(notification, it) }
         getSystemService(NotificationManager::class.java).notify(LYRICS_NOTIFICATION_ID, notification)
     }
@@ -1563,6 +1742,12 @@ class MeloXPlaybackService : MediaSessionService() {
         active.replaceMediaItem(index, localItem)
     }
 
+    private fun downloaded(mediaId: String): Boolean {
+        mediaId.toLongOrNull()?.takeIf { downloadStore.contains(it) }?.let { return true }
+        val id = PlaybackTrackIdentity.decode(mediaId) ?: return false
+        return providerDownloadStore.isDownloaded(id)
+    }
+
     private fun skipToNextDownloaded(active: ExoPlayer): Boolean {
         val current = active.currentMediaItemIndex
         if (current !in 0 until active.mediaItemCount) return false
@@ -1573,7 +1758,7 @@ class MeloXPlaybackService : MediaSessionService() {
             emptyList()
         }
         val target = (forward + wrapped).firstOrNull { index ->
-            active.getMediaItemAt(index).mediaId.toLongOrNull()?.let(downloadStore::contains) == true
+            downloaded(active.getMediaItemAt(index).mediaId)
         } ?: return false
         cancelPreparedMix()
         active.seekToDefaultPosition(target)
@@ -1679,6 +1864,11 @@ class MeloXPlaybackService : MediaSessionService() {
         getSystemService(NotificationManager::class.java).cancel(LYRICS_NOTIFICATION_ID)
         serviceScope.cancel()
         cancelPreparedMix(releaseStandby = true)
+        syncLinkPlayer?.let { remote ->
+            player?.let { local -> runCatching { mediaSession?.setPlayer(local) } }
+            runCatching { remote.release() }
+        }
+        syncLinkPlayer = null
         equalizerController.release()
         autoMixAnalyzer.clear()
         mediaPrefetcher.clearAnalysisFiles()

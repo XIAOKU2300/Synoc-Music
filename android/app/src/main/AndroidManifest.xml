@@ -14,6 +14,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Keeps the SyncLink session alive in the background (prerequisite: CHANGE_WIFI_MULTICAST_STATE). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
@@ -21,6 +23,17 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
+    <!-- Shanling SyncLink LAN discovery (multicast 239.250.255.225:1751). -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <!-- Shanling SyncLink over classic Bluetooth RFCOMM (paired DAP such as M0). -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+    <!-- Classic inquiry results (ACTION_FOUND) are location-gated, same as the official client. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
     <application
         android:name=".MeloXApplication"
@@ -43,6 +56,7 @@
 
         <activity android:name=".ui.account.MeloXAccountActivity" android:exported="false" android:theme="@style/Theme.MeloX.TransparentActivity" />
         <activity android:name=".ui.provider.MeloXProviderServicesActivity" android:exported="false" android:theme="@style/Theme.MeloX.TransparentActivity" />
+        <activity android:name=".ui.synclink.SyncLinkActivity" android:exported="false" android:windowSoftInputMode="adjustResize" android:theme="@style/Theme.MeloX.TransparentActivity" />
         <activity
             android:name=".ui.account.SpotifyCallbackActivity"
             android:exported="true"
@@ -99,6 +113,11 @@
                 <action android:name="android.media.browse.MediaBrowserService" />
             </intent-filter>
         </service>
+
+        <service
+            android:name=".core.synclink.SyncLinkConnectionService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
 
         <service
             android:name=".platform.floating.MeloXFloatingLyricsService"

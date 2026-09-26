@@ -1,5 +1,6 @@
 package com.lladlam.melox.ui.legal
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -8,6 +9,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -42,7 +46,19 @@ import com.lladlam.melox.ui.glass.MeloXSymbol
 import com.lladlam.melox.ui.glass.MeloXSymbolIcon
 import com.lladlam.melox.ui.glass.MeloXSystemColors
 
-const val MELOX_LEGAL_VERSION = "1.2-2026-08-27"
+const val MELOX_LEGAL_VERSION = "2.0-2026-09-25"
+
+/** Synoc Music fork: maintainer links shown in the consent dialog, disclaimer and About page. */
+object SynocProject {
+    const val NAME = "Synoc Music"
+    const val GITHUB_USER = "XIAOKU2300"
+    const val GITHUB_URL = "https://github.com/XIAOKU2300"
+    const val QQ_GROUP_NAME = "山灵音乐逆向反馈群"
+    const val QQ_GROUP_NUMBER = "1124680973"
+    const val QQ_GROUP_URL =
+        "http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=9PFsj_0lDY35JcGVKDF-Znb9o7asAEfy&authKey=bqRpzOa1%2F%2Ba6RU%2FnMGWV1LcBFzEYglGtreTuj4SfUF257lneWWeaDUrPocrAQirE&noverify=0&group_code=1124680973"
+    const val UPSTREAM_URL = "https://github.com/lladlam/MeloX-Android"
+}
 
 enum class MeloXLegalDocument(
     val title: String,
@@ -247,32 +263,63 @@ fun MeloXFirstLaunchLegalConsent(
     onDecline: () -> Unit,
     onOpenProject: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val openUrl: (String) -> Unit = { url ->
+        runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))) }
+    }
     MeloXGlassDialog(visible = true, onDismiss = {}) {
-        Text("欢迎使用 MeloX", style = MaterialTheme.typography.titleLarge)
+        Text("欢迎使用 ${SynocProject.NAME}", style = MaterialTheme.typography.titleLarge)
         Text(
-            text = "MeloX 是非官方开源项目。使用前请阅读并同意隐私政策与免责声明，了解账号登录、第三方服务、内容版权和本地数据处理方式。",
+            text = "${SynocProject.NAME} 是基于开源项目 MeloX 修改的非官方社区版本，免费开源，按 GPLv3 发布。",
             modifier = Modifier.padding(top = 9.dp),
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.68f),
             fontSize = 14.sp,
             lineHeight = 20.sp,
         )
-        MeloXLegalLinks(modifier = Modifier.padding(top = 10.dp))
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 10.dp)
+                .heightIn(max = 240.dp)
+                .clip(MaterialTheme.shapes.medium)
+                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            ConsentPoint("与山灵（Shanling）及各音乐平台均无隶属、合作或授权关系，商标归各自权利人所有。")
+            ConsentPoint("SyncLink 功能仅用于控制你本人拥有的播放器，协议为互操作目的自行分析，不修改设备固件。")
+            ConsentPoint("歌词、封面等内容来自第三方，版权归原作者；请仅在合法授权范围内使用。")
+            ConsentPoint("软件按“现状”提供，不收费、不担保；使用风险由使用者自行承担。")
+        }
+        MeloXLegalLinks(modifier = Modifier.padding(top = 8.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 2.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            LegalLink("GitHub：${SynocProject.GITHUB_USER}", MeloXSystemColors.Blue) { openUrl(SynocProject.GITHUB_URL) }
+            Text("·", modifier = Modifier.padding(horizontal = 4.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+            LegalLink("QQ 群 ${SynocProject.QQ_GROUP_NUMBER}", MeloXSystemColors.Blue) { openUrl(SynocProject.QQ_GROUP_URL) }
+        }
         Text(
-            text = "点击“同意并继续”即表示你已阅读并同意以上文件。你可以随时在设置中重新查看。",
-            modifier = Modifier.padding(top = 8.dp),
+            text = "点击“同意并继续”即表示你已阅读并同意以上内容及隐私政策、免责声明，可随时在设置中重新查看。",
+            modifier = Modifier.padding(top = 6.dp),
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.54f),
             fontSize = 12.sp,
             lineHeight = 17.sp,
         )
         Text(
-            text = "项目主页与开源许可",
+            text = "上游项目 MeloX 与开源许可",
             modifier = Modifier
                 .align(Alignment.CenterHorizontally)
                 .clip(MaterialTheme.shapes.small)
                 .clickable(role = Role.Button, onClick = onOpenProject)
-                .padding(horizontal = 8.dp, vertical = 8.dp),
+                .padding(horizontal = 8.dp, vertical = 6.dp),
             color = MeloXSystemColors.Blue,
-            fontSize = 13.sp,
+            fontSize = 12.sp,
             fontWeight = FontWeight.Medium,
         )
         Row(
@@ -292,6 +339,26 @@ fun MeloXFirstLaunchLegalConsent(
                 style = MeloXGlassButtonStyle.BorderedProminent,
             ) { Text("同意并继续") }
         }
+    }
+}
+
+@Composable
+private fun ConsentPoint(text: String) {
+    Row(verticalAlignment = Alignment.Top) {
+        Text(
+            text = "•",
+            modifier = Modifier.padding(end = 6.dp),
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+            fontSize = 13.sp,
+            lineHeight = 19.sp,
+        )
+        Text(
+            text = text,
+            modifier = Modifier.weight(1f),
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f),
+            fontSize = 13.sp,
+            lineHeight = 19.sp,
+        )
     }
 }
 

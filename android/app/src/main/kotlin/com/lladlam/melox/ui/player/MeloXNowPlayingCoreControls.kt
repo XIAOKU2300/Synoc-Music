@@ -40,6 +40,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -72,7 +73,10 @@ import com.lladlam.melox.core.audio.MusicQualityRuntime
 import com.lladlam.melox.core.download.MeloXDownloadStore
 import com.lladlam.melox.core.music.model.AudioQualityTier
 import com.lladlam.melox.core.music.model.MusicSource
+import com.lladlam.melox.core.synclink.SyncLinkManager
 import com.lladlam.melox.playback.PlaybackTrackIdentity
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import com.lladlam.melox.playback.CrossProviderPlaybackRuntime
 import com.lladlam.melox.playback.ProviderPlaybackQualityRuntime
 import com.lladlam.melox.ui.glass.meloXLiquidButton
@@ -204,11 +208,15 @@ private fun SceneProgressControl(
             )
 
             if (MeloXSettingsRuntime.showPlayerQualityTip) {
-                SceneQualityChip(
-                    state = state,
-                    onShowQuality = onShowQuality,
-                    modifier = Modifier.align(Alignment.Center),
-                )
+                if (state.mediaId?.startsWith("synclink:") == true) {
+                    SyncLinkQualityChip(modifier = Modifier.align(Alignment.Center))
+                } else {
+                    SceneQualityChip(
+                        state = state,
+                        onShowQuality = onShowQuality,
+                        modifier = Modifier.align(Alignment.Center),
+                    )
+                }
             }
 
             Text(
@@ -275,6 +283,24 @@ private fun SceneQualityChip(
         else -> selected.title
     }
     val displayTitle = fallbackSource?.let { "${it.displayName} · $qualityTitle" } ?: qualityTitle
+    SceneQualityChipBody(displayTitle, onShowQuality, modifier)
+}
+
+/** The DAP decides what it plays; show the format SyncLink reports (read-only, like the official app). */
+@Composable
+private fun SyncLinkQualityChip(modifier: Modifier = Modifier) {
+    val badgeFlow = remember { SyncLinkManager.state.map { it.qualityBadge }.distinctUntilChanged() }
+    val badge by badgeFlow.collectAsState(initial = SyncLinkManager.state.value.qualityBadge)
+    if (badge.isBlank()) return
+    SceneQualityChipBody(badge, onClick = {}, modifier = modifier)
+}
+
+@Composable
+private fun SceneQualityChipBody(
+    displayTitle: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(
@@ -303,7 +329,7 @@ private fun SceneQualityChip(
                 .clickable(
                     interactionSource = interaction,
                     indication = null,
-                ) { onShowQuality() }
+                ) { onClick() }
                 .padding(horizontal = 9.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(5.dp),

@@ -7,3 +7,10 @@ build/
 .gradle/
 *.hprof
 *.log
+
+# 不公开的开发产物（本地保留，永不提交）
+踩坑记录.md
+*踩坑记录*.md
+JELLYFIN_OPENLIST_ADAPTATION_PLAN.tmp.md
+*.tmp.md
+弥乐MeloX.png

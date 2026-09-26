@@ -33,6 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -189,6 +190,12 @@ fun MeloXHomeScreen(
     source: MusicSource = MusicSource.Netease,
     onOpenTool: (String) -> Unit = {},
 ) {
+    // With a SyncLink DAP connected the home tab shows the device's own library instead.
+    val synclink by com.lladlam.melox.core.synclink.SyncLinkManager.state.collectAsState()
+    if (synclink.isConnected) {
+        com.lladlam.melox.ui.synclink.SyncLinkDeviceHome()
+        return
+    }
     if (source == MusicSource.Netease) {
         NeteaseHomeDataScreen(onOpenTool)
     } else {
